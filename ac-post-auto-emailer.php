@@ -90,6 +90,9 @@ class ACPAE_PostAutoEmailer
         add_action('transition_post_status', array($this, 'acpae_set_email_marker'), 10, 3);
         add_action('save_post', array($this, 'acpae_send_email_after_save'), 10, 3);
 
+        add_action('add_meta_boxes', array($this, 'acpae_add_custom_meta_box'));
+
+
 
 
         add_action('acf/init', array($this, 'acpae_acf'));
@@ -114,10 +117,8 @@ class ACPAE_PostAutoEmailer
     /**
      * Initialize ACF fields
      */
-    public function acpae_acf()
-    {
-        if (function_exists('acf_add_local_field_group'))
-        {
+    public function acpae_acf() {
+        if (function_exists('acf_add_local_field_group')) {
 
             acf_add_local_field_group(array(
                 'key' => 'group_acpae_email',
@@ -131,6 +132,23 @@ class ACPAE_PostAutoEmailer
                         'instructions' => 'Enter the email address where the post will be sent upon publication.',
                         'required' => 0,
                     ),
+                    array(
+                        'key' => 'field_acpae_email_toggle',
+                        'label' => 'Enable Email Notification',
+                        'name' => 'acpae_email_toggle',
+                        'type' => 'true_false',
+                        'default_value' =>  1,
+                        'instructions' => 'Toggle to enable or disable email notification.',
+                        'ui' => 1, // To display a toggle switch instead of a checkbox
+                        'conditional_logic' => array(
+                            array(
+                                array(
+                                    'field' => 'field_acpae_email_address',
+                                    'operator' => '!=empty',
+                                ),
+                            ),
+                        ),
+                    ),
                 ),
                 'location' => array(
                     array(
@@ -141,7 +159,7 @@ class ACPAE_PostAutoEmailer
                         ),
                     ),
                 ),
-                'position' => 'side', // Add this line to position the field group in the sidebar
+                'position' => 'side',
                 'style' => 'default',
                 'label_placement' => 'top',
                 'instruction_placement' => 'label',
@@ -245,17 +263,48 @@ class ACPAE_PostAutoEmailer
     public function acpae_send_email_after_save($post_ID, $post, $update) {
         if (get_post_meta($post_ID, '_acpae_ready_to_email', true) === 'yes' && 'post' === get_post_type($post_ID)) {
             $recipient_email = get_field('acpae_email_address', $post_ID);
+            $email_toggle = get_field('acpae_email_toggle', $post_ID);
 
-            if (!empty($recipient_email) && is_email($recipient_email)) {
+            if (!empty($recipient_email) && is_email($recipient_email) && $email_toggle) {
                 $post_url = get_permalink($post_ID);
                 $subject = 'New Post Published';
                 $message = 'A new post has been published. Check it out: ' . $post_url;
 
-                wp_mail($recipient_email, $subject, $message);
+                // Send the email and check if it was processed for sending
+                if (wp_mail($recipient_email, $subject, $message)) {
+                    // Email processed for sending, set the post meta
+                    update_post_meta($post_ID, '_acpae_email_notification_sent', 'yes');
+                    update_post_meta($post_ID, '_acpae_sent_on', current_time('mysql'));
+                    update_field('racpae_email_toggle', 0, $post_ID);
+                }
 
-                // Clear the marker
+                // Clear the marker regardless of email send status
                 delete_post_meta($post_ID, '_acpae_ready_to_email');
             }
+        }
+    }
+
+    public function acpae_add_custom_meta_box() {
+        add_meta_box(
+            'acpae_email_status_meta_box',       // ID of the meta box
+            'Email Notification Status',         // Title of the meta box
+            array($this, 'acpae_display_email_status'),        // Callback function
+            'post',                              // Post type
+            'side',                              // Context (side, normal, advanced)
+            'high'                               // Priority
+        );
+    }
+
+    public function acpae_display_email_status($post) {
+        // Get post meta
+        $email_sent = get_post_meta($post->ID, '_acpae_email_notification_sent', true);
+        $sent_on = get_post_meta($post->ID, '_acpae_sent_on', true);
+
+        // Display email status
+        if ($email_sent === 'yes' && !empty($sent_on)) {
+            echo "<p>Email sent on: " . esc_html($sent_on) . "</p>";
+        } else {
+            echo "<p>Email not sent yet.</p>";
         }
     }
 
