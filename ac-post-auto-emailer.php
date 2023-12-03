@@ -304,7 +304,7 @@ class ACPAE_PostAutoEmailer
      * Display the email notification information.
      */
     public function acpae_display_email_status($post) {
-        
+
         // Get post meta
         $email_sent = get_post_meta($post->ID, '_acpae_email_notification_sent', true);
         $sent_on = get_post_meta($post->ID, '_acpae_sent_on', true);
