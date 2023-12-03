@@ -10,7 +10,7 @@
   Text Domain: ac-post-auto-emailer
   Domain Path: /lang/
   License:
-  Copyright 2018 AmberCouch
+  Copyright 2023 AmberCouch
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation; either version 2 of the License, or
@@ -27,11 +27,11 @@
  */
 defined('ABSPATH') or die('You do not have the required permissions');
 
-if (!defined('ACPAE_VERSION')) define( 'ACPAE_VERSION', '0.0.3' );
+if (!defined('ACPAE_VERSION')) define( 'ACPAE_VERSION', '0.0.1' );
 if (!defined('ACPAE_PLUGIN')) define( 'ACPAE_PLUGIN', __FILE__ );
 if (!defined('ACPAE_PREFIX')) define( 'ACPAE_PREFIX', 'acpae_' );
 
-define( 'ACPAE_TEXT_DOMAIN', 'ac-plugin-name' );
+define( 'ACPAE_TEXT_DOMAIN', 'ac-post-auto-emailer' );
 
 define( 'ACPAE_PLUGIN_BASENAME', plugin_basename( ACPAE_PLUGIN ) );
 
@@ -44,7 +44,7 @@ define( 'ACPAE_PLUGIN_LIB_DIR', ACPAE_PLUGIN_DIR . '/lib' );
 //require ACPAE_PLUGIN_DIR .  '/vendor/autoload.php';
 
 function acpae_plugin_url( $path = '' ) {
-      $url = plugins_url( $path, ACPAE_PLUGIN );
+    $url = plugins_url( $path, ACPAE_PLUGIN );
     if ( is_ssl() && 'http:' == substr( $url, 0, 5 ) ) {
         $url = 'https:' . substr( $url, 5 );
     }
@@ -91,9 +91,6 @@ class ACPAE_PostAutoEmailer
         add_action('save_post', array($this, 'acpae_send_email_after_save'), 10, 3);
 
         add_action('add_meta_boxes', array($this, 'acpae_add_custom_meta_box'));
-
-
-
 
         add_action('acf/init', array($this, 'acpae_acf'));
 
@@ -252,6 +249,7 @@ class ACPAE_PostAutoEmailer
      * Set a marker when post status transitions to publish.
      */
     public function acpae_set_email_marker($new_status, $old_status, $post) {
+
         if ('publish' === $new_status && 'publish' !== $old_status && 'post' === get_post_type($post)) {
             update_post_meta($post->ID, '_acpae_ready_to_email', 'yes');
         }
@@ -261,30 +259,37 @@ class ACPAE_PostAutoEmailer
      * Send email after post is saved if marker is set.
      */
     public function acpae_send_email_after_save($post_ID, $post, $update) {
+
         if (get_post_meta($post_ID, '_acpae_ready_to_email', true) === 'yes' && 'post' === get_post_type($post_ID)) {
             $recipient_email = get_field('acpae_email_address', $post_ID);
             $email_toggle = get_field('acpae_email_toggle', $post_ID);
 
             if (!empty($recipient_email) && is_email($recipient_email) && $email_toggle) {
                 $post_url = get_permalink($post_ID);
-                $subject = 'New Post Published';
-                $message = 'A new post has been published. Check it out: ' . $post_url;
+                $subject = $post->post_title;
+                $message = 'A new post has been published for you. ' . $post_url;
 
-                // Send the email and check if it was processed for sending
-                if (wp_mail($recipient_email, $subject, $message)) {
-                    // Email processed for sending, set the post meta
-                    update_post_meta($post_ID, '_acpae_email_notification_sent', 'yes');
-                    update_post_meta($post_ID, '_acpae_sent_on', current_time('mysql'));
-                    update_field('racpae_email_toggle', 0, $post_ID);
+                // Check if the post is password protected and include the password if it is
+                if (!empty($post->post_password)) {
+                    $post_password = $post->post_password;
+                    $message .= "\n\nPassword for viewing: " . $post_password;
                 }
 
-                // Clear the marker regardless of email send status
+                if (wp_mail($recipient_email, $subject, $message)) {
+                    update_post_meta($post_ID, '_acpae_email_notification_sent', 'yes');
+                    update_post_meta($post_ID, '_acpae_sent_on', current_time('mysql'));
+                }
+
                 delete_post_meta($post_ID, '_acpae_ready_to_email');
             }
         }
     }
 
+    /**
+     * Send email after post is saved if marker is set.
+     */
     public function acpae_add_custom_meta_box() {
+
         add_meta_box(
             'acpae_email_status_meta_box',       // ID of the meta box
             'Email Notification Status',         // Title of the meta box
@@ -295,19 +300,30 @@ class ACPAE_PostAutoEmailer
         );
     }
 
+    /**
+     * Display the email notification information.
+     */
     public function acpae_display_email_status($post) {
+        
         // Get post meta
         $email_sent = get_post_meta($post->ID, '_acpae_email_notification_sent', true);
         $sent_on = get_post_meta($post->ID, '_acpae_sent_on', true);
+        $sent_to = get_post_meta($post->ID, '_acpae_email_address', true);
+
+        // Format date using WordPress date_i18n function
+        if (!empty($sent_on)) {
+            $timestamp = strtotime($sent_on);
+            $formatted_date = date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $timestamp);
+        }
 
         // Display email status
         if ($email_sent === 'yes' && !empty($sent_on)) {
-            echo "<p>Email sent on: " . esc_html($sent_on) . "</p>";
+            echo "<p>Sent on: " . esc_html($formatted_date) . "<br>";
+            echo "Email sent to: " . esc_html($sent_to) . "</p>";
         } else {
             echo "<p>Email not sent yet.</p>";
         }
     }
-
 
 
 }
